@@ -1,16 +1,12 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import RedirectResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 import string, random, json, os
 
-app = FastAPI(title="🔗 URL Shortener Web")
+app = FastAPI(title="🔗 URL Shortener API", version="1.0")
 
 DB_FILE = "database.json"
 
-# مسیر قالب‌ها
-templates = Jinja2Templates(directory="templates")
-
-# ایجاد فایل دیتابیس اگر وجود ندارد
+# اگر فایل دیتابیس وجود ندارد، بسازش
 if not os.path.exists(DB_FILE):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump({}, f)
@@ -27,39 +23,29 @@ def generate_short_code(length=6):
     chars = string.ascii_letters + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
 
-# -----------------------------
-# مسیر صفحه اصلی
-# -----------------------------
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "short_url": None})
+@app.get("/")
+def home():
+    return {"message": "Welcome to the URL Shortener API!"}
 
-# -----------------------------
-# پردازش فرم لینک کوتاه
-# -----------------------------
-@app.post("/", response_class=HTMLResponse)
-def shorten_url(request: Request, url: str = Form(...)):
+@app.post("/shorten")
+def shorten_url(url: str):
+    """دریافت لینک بلند و ساخت لینک کوتاه"""
     data = load_db()
 
-    # بررسی اینکه لینک قبلاً کوتاه شده
+    # چک کن که آیا لینک قبلاً کوتاه شده
     for short, long in data.items():
         if long == url:
-            short_url = f"http://localhost:8000/{short}"
-            return templates.TemplateResponse("index.html", {"request": request, "short_url": short_url})
+            return {"short_url": f"http://localhost:8000/{short}"}
 
     short_code = generate_short_code()
     data[short_code] = url
     save_db(data)
-    short_url = f"http://localhost:8000/{short_code}"
+    return {"short_url": f"http://localhost:8000/{short_code}"}
 
-    return templates.TemplateResponse("index.html", {"request": request, "short_url": short_url})
-
-# -----------------------------
-# هدایت به لینک اصلی
-# -----------------------------
 @app.get("/{short_code}")
 def redirect_to_url(short_code: str):
+    """هدایت به لینک اصلی"""
     data = load_db()
     if short_code not in data:
-        return HTMLResponse("<h2>❌ لینک کوتاه پیدا نشد!</h2>", status_code=404)
+        raise HTTPException(status_code=404, detail="Short link not found")
     return RedirectResponse(data[short_code])
